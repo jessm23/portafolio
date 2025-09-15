@@ -1,86 +1,101 @@
-// js/app.js
+// 📂 js/app.js
 import { db, storage } from "./firebase.js";
-import { ref, push, onValue, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-storage.js";
+import { ref, set, push, onValue, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { ref as sRef, uploadBytes, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
 
-const form = document.getElementById("uploadForm");
+// Formulario
+const uploadForm = document.getElementById("uploadForm");
 const proyectosLista = document.getElementById("proyectosLista");
-const proyectosRef = ref(db, "proyectos");
 
-// SUBIR proyecto
-form.addEventListener("submit", async (e) => {
+// Subir proyecto
+uploadForm.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const titulo = form.titulo.value;
-  const descripcion = form.descripcion.value;
-  const archivo = form.archivo.files[0];
-  if (!archivo) return alert("Selecciona un archivo");
+  const titulo = e.target.titulo.value;
+  const descripcion = e.target.descripcion.value;
+  const archivo = e.target.archivo.files[0];
 
-  // Ruta única en storage
-  const archivoPath = "proyectos/" + Date.now() + "_" + archivo.name;
-  const fileRef = storageRef(storage, archivoPath);
+  if (!archivo) {
+    alert("Por favor selecciona un archivo");
+    return;
+  }
 
-  // Subir archivo
-  await uploadBytes(fileRef, archivo);
-  const url = await getDownloadURL(fileRef);
+  try {
+    // 🔹 Ruta interna en Storage
+    const archivoPath = "proyectos/" + Date.now() + "_" + archivo.name;
+    const archivoRef = sRef(storage, archivoPath);
 
-  // Guardar en DB
-  const proyecto = {
-    titulo,
-    descripcion,
-    nombreArchivo: archivo.name,
-    archivoURL: url,
-    archivoPath, // ✅ se guarda para borrado
-    fecha: new Date().toLocaleString()
-  };
+    // 🔹 Subir archivo
+    await uploadBytes(archivoRef, archivo);
 
-  await push(proyectosRef, proyecto);
-  form.reset();
+    // 🔹 Obtener URL pública
+    const archivoURL = await getDownloadURL(archivoRef);
+
+    // 🔹 Guardar en la base de datos
+    const proyectosRef = ref(db, "proyectos");
+    const nuevoProyectoRef = push(proyectosRef);
+
+    await set(nuevoProyectoRef, {
+      titulo,
+      descripcion,
+      archivoNombre: archivo.name,
+      archivoURL,
+      archivoPath, // importante para borrar
+      fecha: new Date().toLocaleString()
+    });
+
+    alert("✅ Proyecto subido con éxito!");
+    uploadForm.reset();
+
+  } catch (error) {
+    console.error("Error al subir:", error);
+    alert("❌ Error al subir proyecto");
+  }
 });
 
-// MOSTRAR proyectos
+// Mostrar proyectos
+const proyectosRef = ref(db, "proyectos");
 onValue(proyectosRef, (snapshot) => {
   proyectosLista.innerHTML = "";
   snapshot.forEach((child) => {
     const proyecto = child.val();
-    const id = child.key;
+    const key = child.key;
 
-    const col = document.createElement("div");
-    col.className = "col-md-6 col-lg-4";
-    col.innerHTML = `
-      <div class="card shadow-lg border-0 rounded-4 h-100 bg-light text-dark">
-        <div class="card-body d-flex flex-column">
-          <h5 class="card-title text-primary fw-bold">${proyecto.titulo}</h5>
+    const div = document.createElement("div");
+    div.classList.add("col-md-4");
+
+    div.innerHTML = `
+      <div class="card shadow border-0 rounded-3 h-100">
+        <div class="card-body">
+          <h5 class="card-title text-primary">${proyecto.titulo}</h5>
           <p class="card-text">${proyecto.descripcion}</p>
-          <small class="text-secondary">📅 ${proyecto.fecha}</small>
-          <div class="mt-auto d-flex justify-content-between">
-            <a href="${proyecto.archivoURL}" target="_blank" class="btn btn-info btn-sm rounded-pill">
-              <i class="bi bi-eye"></i> Ver
-            </a>
-            <a href="${proyecto.archivoURL}" download="${proyecto.nombreArchivo}" class="btn btn-success btn-sm rounded-pill">
-              <i class="bi bi-download"></i> Descargar
-            </a>
-            <button class="btn btn-danger btn-sm rounded-pill btnEliminar" data-id="${id}" data-path="${proyecto.archivoPath}">
-              <i class="bi bi-trash"></i> Eliminar
-            </button>
-          </div>
+          <a href="${proyecto.archivoURL}" target="_blank" class="btn btn-sm btn-success">
+            <i class="bi bi-download"></i> Descargar
+          </a>
+          <button class="btn btn-sm btn-danger ms-2" data-id="${key}">
+            <i class="bi bi-trash"></i> Eliminar
+          </button>
         </div>
-      </div>`;
-    proyectosLista.appendChild(col);
+      </div>
+    `;
 
-    // ELIMINAR proyecto
-    col.querySelector(".btnEliminar").addEventListener("click", async () => {
-      if (confirm("¿Seguro que quieres eliminar este proyecto?")) {
-        await remove(ref(db, "proyectos/" + id));
+    proyectosLista.appendChild(div);
 
-        // Eliminar de Storage
-        if (proyecto.archivoPath) {
-          const fileRef = storageRef(storage, proyecto.archivoPath);
-          try {
+    // Eliminar proyecto
+    div.querySelector("button").addEventListener("click", async () => {
+      if (confirm("¿Eliminar este proyecto?")) {
+        try {
+          // 🔹 Eliminar archivo de Storage
+          if (proyecto.archivoPath) {
+            const fileRef = sRef(storage, proyecto.archivoPath);
             await deleteObject(fileRef);
-          } catch (err) {
-            console.error("Error al eliminar archivo:", err);
           }
+          // 🔹 Eliminar de Realtime Database
+          await remove(ref(db, "proyectos/" + key));
+          alert("✅ Proyecto eliminado");
+        } catch (err) {
+          console.error("Error al eliminar:", err);
+          alert("❌ Error al eliminar proyecto");
         }
       }
     });
