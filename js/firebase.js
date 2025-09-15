@@ -9,7 +9,7 @@ const firebaseConfig = {
   authDomain: "portafolio-ff27e.firebaseapp.com",
   databaseURL: "https://portafolio-ff27e-default-rtdb.firebaseio.com",
   projectId: "portafolio-ff27e",
-  storageBucket: "portafolio-ff27e.firebasestorage.app", // ✅ corregido
+  storageBucket: "portafolio-ff27e.appspot.com", // ✅ corregido
   messagingSenderId: "1097811914710",
   appId: "1:1097811914710:web:42d906a86cf31b889bbe77",
   measurementId: "G-TK9X8N30JD"
@@ -22,4 +22,5 @@ const storage = getStorage(app);
 
 // 🔹 Exportar
 export { app, db, storage };
+
 
